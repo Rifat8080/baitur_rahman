@@ -4,11 +4,11 @@ import '../../../core/database/app_repository.dart';
 import 'app_models.dart';
 
 /// Auto-generates pending [FeeRecord]s for students and pending
-/// [SalaryRecord]s for staff every calendar month.
+/// [SalaryRecord]s for staff after each completed month from the user's
+/// joining date.
 ///
-/// Call [generateCurrentMonth] once on app start-up (and optionally after
-/// saving a user) to ensure every user with a configured monthly amount has a
-/// record for the current month.
+/// Example: if a user joins on 2026-03-16, the first auto-generated record is
+/// due on 2026-04-16, then 2026-05-16, 2026-06-16, and so on.
 class MonthlyRecordService {
   MonthlyRecordService._();
 
@@ -18,81 +18,150 @@ class MonthlyRecordService {
   static String monthKey(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}';
 
-  /// Generates (as *pending*) the current month's fee/salary records for every
-  /// user whose [AppUser.monthlyFee] / [AppUser.monthlySalary] is > 0,
-  /// provided the record does not already exist.
-  static Future<void> generateCurrentMonth() async {
-    final repo = AppRepository.instance;
-    final data = await repo.loadAll();
-    final now = DateTime.now();
-    final month = monthKey(now);
+  static DateTime _dateOnly(DateTime value) =>
+      DateTime(value.year, value.month, value.day);
 
-    // ----- FEE records for students ----------------------------------------
-    final existingFeeKeys = <String>{};
-    for (final fee in data.fees) {
-      if (fee.month == month) {
-        existingFeeKeys.add(fee.studentId);
+  static int _daysInMonth(int year, int month) {
+    final nextMonth = month == 12
+        ? DateTime(year + 1, 1, 1)
+        : DateTime(year, month + 1, 1);
+    return nextMonth.subtract(const Duration(days: 1)).day;
+  }
+
+  static DateTime _addMonths(DateTime value, int months) {
+    final totalMonths = value.month - 1 + months;
+    final year = value.year + (totalMonths ~/ 12);
+    final month = (totalMonths % 12) + 1;
+    final day = value.day.clamp(1, _daysInMonth(year, month));
+    return DateTime(year, month, day);
+  }
+
+  static List<DateTime> _dueDatesUntil(DateTime joiningDate, DateTime now) {
+    final dueDates = <DateTime>[];
+    final start = _dateOnly(joiningDate);
+    final end = _dateOnly(now);
+
+    var index = 1;
+    while (true) {
+      final due = _addMonths(start, index);
+      if (due.isAfter(end)) {
+        break;
+      }
+      dueDates.add(due);
+      index++;
+    }
+
+    return dueDates;
+  }
+
+  static bool _isStaff(AppRole role) {
+    return role == AppRole.teacher ||
+        role == AppRole.accountant ||
+        role == AppRole.manager ||
+        role == AppRole.admin;
+  }
+
+  static Future<void> _generateFeesForUser({
+    required AppRepository repo,
+    required AppUser user,
+    required List<FeeRecord> existingFees,
+    required DateTime now,
+  }) async {
+    if (user.role != AppRole.student || user.monthlyFee <= 0) {
+      return;
+    }
+
+    final existingMonths = <String>{};
+    for (final fee in existingFees) {
+      if (fee.studentId == user.id) {
+        existingMonths.add(fee.month);
       }
     }
 
-    for (final user in data.users) {
-      if (user.role != AppRole.student) continue;
-      if (user.monthlyFee <= 0) continue;
-      if (existingFeeKeys.contains(user.id)) continue;
-
+    for (final dueDate in _dueDatesUntil(user.createdAt, now)) {
+      final month = monthKey(dueDate);
+      if (existingMonths.contains(month)) {
+        continue;
+      }
       await repo.insertFee(
         FeeRecord(
           id: _uuid.v4(),
           studentId: user.id,
           amount: user.monthlyFee,
           note: 'Auto-generated monthly fee',
-          createdAt: DateTime(now.year, now.month, 1),
+          createdAt: dueDate,
           month: month,
           status: FinanceStatus.pending,
         ),
       );
+      existingMonths.add(month);
+    }
+  }
+
+  static Future<void> _generateSalariesForUser({
+    required AppRepository repo,
+    required AppUser user,
+    required List<SalaryRecord> existingSalaries,
+    required DateTime now,
+  }) async {
+    if (!_isStaff(user.role) || user.monthlySalary <= 0) {
+      return;
     }
 
-    // ----- SALARY records for staff ----------------------------------------
-    final existingSalaryKeys = <String>{};
-    for (final salary in data.salaries) {
-      if (salary.month == month) {
-        existingSalaryKeys.add(salary.teacherId);
+    final existingMonths = <String>{};
+    for (final salary in existingSalaries) {
+      if (salary.teacherId == user.id) {
+        existingMonths.add(salary.month);
       }
     }
 
-    final staffRoles = {
-      AppRole.teacher,
-      AppRole.accountant,
-      AppRole.manager,
-      AppRole.admin,
-    };
-
-    for (final user in data.users) {
-      if (!staffRoles.contains(user.role)) continue;
-      if (user.monthlySalary <= 0) continue;
-      if (existingSalaryKeys.contains(user.id)) continue;
-
+    for (final dueDate in _dueDatesUntil(user.createdAt, now)) {
+      final month = monthKey(dueDate);
+      if (existingMonths.contains(month)) {
+        continue;
+      }
       await repo.insertSalary(
         SalaryRecord(
           id: _uuid.v4(),
           teacherId: user.id,
           amount: user.monthlySalary,
           month: month,
-          createdAt: DateTime(now.year, now.month, 1),
+          createdAt: dueDate,
           status: FinanceStatus.pending,
         ),
+      );
+      existingMonths.add(month);
+    }
+  }
+
+  /// Generates all due fee/salary records that should exist after completed
+  /// monthly intervals from the joining date.
+  static Future<void> generateCurrentMonth() async {
+    final repo = AppRepository.instance;
+    final data = await repo.loadAll();
+    final now = DateTime.now();
+
+    for (final user in data.users) {
+      await _generateFeesForUser(
+        repo: repo,
+        user: user,
+        existingFees: data.fees,
+        now: now,
+      );
+      await _generateSalariesForUser(
+        repo: repo,
+        user: user,
+        existingSalaries: data.salaries,
+        now: now,
       );
     }
   }
 
-  /// Generates the current month's record for a *single* user immediately
-  /// after they are saved.  Safe to call even if the record already exists.
+  /// Generates all due records for a single user. Safe to call after save.
   static Future<void> generateForUser(String userId) async {
     final repo = AppRepository.instance;
     final data = await repo.loadAll();
     final now = DateTime.now();
-    final month = monthKey(now);
 
     AppUser? user;
     for (final u in data.users) {
@@ -103,48 +172,17 @@ class MonthlyRecordService {
     }
     if (user == null) return;
 
-    if (user.role == AppRole.student && user.monthlyFee > 0) {
-      final alreadyExists = data.fees.any(
-        (f) => f.studentId == userId && f.month == month,
-      );
-      if (!alreadyExists) {
-        await repo.insertFee(
-          FeeRecord(
-            id: _uuid.v4(),
-            studentId: userId,
-            amount: user.monthlyFee,
-            note: 'Auto-generated monthly fee',
-            createdAt: DateTime(now.year, now.month, 1),
-            month: month,
-            status: FinanceStatus.pending,
-          ),
-        );
-      }
-    }
-
-    final staffRoles = {
-      AppRole.teacher,
-      AppRole.accountant,
-      AppRole.manager,
-      AppRole.admin,
-    };
-
-    if (staffRoles.contains(user.role) && user.monthlySalary > 0) {
-      final alreadyExists = data.salaries.any(
-        (s) => s.teacherId == userId && s.month == month,
-      );
-      if (!alreadyExists) {
-        await repo.insertSalary(
-          SalaryRecord(
-            id: _uuid.v4(),
-            teacherId: userId,
-            amount: user.monthlySalary,
-            month: month,
-            createdAt: DateTime(now.year, now.month, 1),
-            status: FinanceStatus.pending,
-          ),
-        );
-      }
-    }
+    await _generateFeesForUser(
+      repo: repo,
+      user: user,
+      existingFees: data.fees,
+      now: now,
+    );
+    await _generateSalariesForUser(
+      repo: repo,
+      user: user,
+      existingSalaries: data.salaries,
+      now: now,
+    );
   }
 }

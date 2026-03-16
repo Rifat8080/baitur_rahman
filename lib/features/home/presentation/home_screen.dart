@@ -71,6 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _pageIndex = 0;
 
   bool _isLoading = true;
+  bool _openingUserFormRoute = false;
 
   void _updateState(VoidCallback updater) {
     setState(updater);
@@ -311,12 +312,22 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final changed = await context.push<bool>(AppRoutes.usersEdit(userId));
-    if (changed == true) {
-      await _load();
-      if (mounted) {
-        _showSnack('User updated successfully.');
+    if (_openingUserFormRoute) {
+      return;
+    }
+
+    _openingUserFormRoute = true;
+
+    try {
+      final changed = await context.push<bool>(AppRoutes.usersEdit(userId));
+      if (changed == true) {
+        await _load();
+        if (mounted) {
+          _showSnack('User updated successfully.');
+        }
       }
+    } finally {
+      _openingUserFormRoute = false;
     }
   }
 
@@ -2174,16 +2185,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(
-                    Icons.school_rounded,
-                    color: Colors.white,
-                    size: 36,
-                  ),
+                  child: _appLogo(size: 56, radius: 14),
                 ),
               ],
             ),
@@ -2254,6 +2261,35 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         return '';
     }
+  }
+
+  Widget _appLogo({double size = 40, double radius = 12}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      child: Image.asset(
+        'logo.jpg',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF0D9488), Color(0xFF0EA5E9)],
+            ),
+          ),
+          child: Icon(
+            Icons.school_rounded,
+            color: Colors.white,
+            size: size * 0.48,
+          ),
+        ),
+      ),
+    );
   }
 
   NavigationDestination _navDestination(String label) {
@@ -2519,16 +2555,12 @@ class _HomeScreenState extends State<HomeScreen> {
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(10),
+                                padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
                                   color: Colors.white.withValues(alpha: 0.16),
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(16),
                                 ),
-                                child: const Icon(
-                                  Icons.school_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
+                                child: _appLogo(size: 32, radius: 12),
                               ),
                               const SizedBox(width: 10),
                               const Expanded(
@@ -2730,14 +2762,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(6),
+              padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [Color(0xFF0D9488), Color(0xFF0EA5E9)],
                 ),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
                     color: const Color(0xFF0D9488).withValues(alpha: 0.30),
@@ -2746,11 +2778,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.school_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
+              child: _appLogo(size: 26, radius: 9),
             ),
             const SizedBox(width: 10),
             const Expanded(

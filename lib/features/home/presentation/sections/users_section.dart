@@ -1,6 +1,138 @@
 part of '../home_screen.dart';
 
 extension _UsersSection on _HomeScreenState {
+  String _attachmentName(String path) {
+    final normalized = path.replaceAll('\\\\', '/');
+    final parts = normalized.split('/');
+    return parts.isEmpty ? path : parts.last;
+  }
+
+  bool _isImagePath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.bmp') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic');
+  }
+
+  void _showUserAttachments(AppUser user) {
+    final attachments = user.attachments;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('${user.name} • Attachments'),
+          content: SizedBox(
+            width: 540,
+            child: attachments.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text('No attachments available for this user.'),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: attachments.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final path = attachments[index];
+                      final isImage = _isImagePath(path);
+
+                      Widget preview;
+                      if (isImage && !kIsWeb && File(path).existsSync()) {
+                        preview = ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(path),
+                            width: 54,
+                            height: 54,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.broken_image_outlined,
+                              size: 26,
+                            ),
+                          ),
+                        );
+                      } else {
+                        preview = Container(
+                          width: 54,
+                          height: 54,
+                          decoration: BoxDecoration(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            isImage
+                                ? Icons.image_outlined
+                                : Icons.insert_drive_file_outlined,
+                          ),
+                        );
+                      }
+
+                      return Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerLowest,
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            preview,
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _attachmentName(path),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    path,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildUsersPage() {
     final canManage = _canManageUsers();
     final scheme = Theme.of(context).colorScheme;
@@ -233,37 +365,55 @@ extension _UsersSection on _HomeScreenState {
                                           ),
                                         ),
                                         PopupMenuButton<String>(
-                                          enabled: canManage,
+                                          enabled: true,
                                           tooltip: 'User actions',
                                           onSelected: (value) {
-                                            if (value == 'edit') {
+                                            if (value == 'attachments') {
+                                              _showUserAttachments(user);
+                                            }
+                                            if (value == 'edit' && canManage) {
                                               _openEditUserRoute(user.id);
                                             }
-                                            if (value == 'delete') {
+                                            if (value == 'delete' &&
+                                                canManage) {
                                               _deleteUser(user.id);
                                             }
                                           },
-                                          itemBuilder: (_) => const [
-                                            PopupMenuItem(
-                                              value: 'edit',
+                                          itemBuilder: (_) => [
+                                            const PopupMenuItem(
+                                              value: 'attachments',
                                               child: ListTile(
                                                 contentPadding: EdgeInsets.zero,
                                                 leading: Icon(
-                                                  Icons.edit_outlined,
+                                                  Icons.attach_file_outlined,
                                                 ),
-                                                title: Text('Edit user'),
+                                                title: Text('View attachments'),
                                               ),
                                             ),
-                                            PopupMenuItem(
-                                              value: 'delete',
-                                              child: ListTile(
-                                                contentPadding: EdgeInsets.zero,
-                                                leading: Icon(
-                                                  Icons.delete_outline,
+                                            if (canManage)
+                                              const PopupMenuItem(
+                                                value: 'edit',
+                                                child: ListTile(
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                  leading: Icon(
+                                                    Icons.edit_outlined,
+                                                  ),
+                                                  title: Text('Edit user'),
                                                 ),
-                                                title: Text('Delete user'),
                                               ),
-                                            ),
+                                            if (canManage)
+                                              const PopupMenuItem(
+                                                value: 'delete',
+                                                child: ListTile(
+                                                  contentPadding:
+                                                      EdgeInsets.zero,
+                                                  leading: Icon(
+                                                    Icons.delete_outline,
+                                                  ),
+                                                  title: Text('Delete user'),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ],
@@ -395,10 +545,23 @@ extension _UsersSection on _HomeScreenState {
                                         ],
                                       ),
                                     ),
-                                    if (canManage) ...[
-                                      const SizedBox(height: 14),
-                                      Row(
-                                        children: [
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: OutlinedButton.icon(
+                                            onPressed: () =>
+                                                _showUserAttachments(user),
+                                            icon: const Icon(
+                                              Icons.attach_file_outlined,
+                                            ),
+                                            label: Text(
+                                              'Attachments (${user.attachments.length})',
+                                            ),
+                                          ),
+                                        ),
+                                        if (canManage) ...[
+                                          const SizedBox(width: 10),
                                           Expanded(
                                             child: FilledButton.tonalIcon(
                                               onPressed: () =>
@@ -410,8 +573,8 @@ extension _UsersSection on _HomeScreenState {
                                             ),
                                           ),
                                         ],
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ],
                                 ),
                               ),

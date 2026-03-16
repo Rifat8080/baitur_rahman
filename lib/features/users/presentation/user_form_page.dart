@@ -63,7 +63,9 @@ class _UserFormPageState extends State<UserFormPage> {
   bool _saving = false;
   bool _loading = true;
   bool _canManage = false;
+  bool _isAdmin = false;
   bool _obscurePassword = true;
+  DateTime _joiningDate = DateTime.now();
 
   AppUser? _editingUser;
   List<AppUser> _allUsers = const [];
@@ -99,43 +101,59 @@ class _UserFormPageState extends State<UserFormPage> {
   }
 
   Future<void> _load() async {
-    final result = await _userUseCases.loadUserFormData(
-      currentUserId: AppAuthNotifier.instance.currentUserId,
-      editingUserId: widget.userId,
-    );
-    if (!mounted) return;
+    try {
+      final result = await _userUseCases.loadUserFormData(
+        currentUserId: AppAuthNotifier.instance.currentUserId,
+        editingUserId: widget.userId,
+      );
+      if (!mounted) return;
 
-    final current = result.currentUser;
+      final current = result.currentUser;
 
-    _canManage =
-        current?.role == AppRole.admin || current?.role == AppRole.manager;
+      _canManage =
+          current?.role == AppRole.admin || current?.role == AppRole.manager;
+      _isAdmin = current?.role == AppRole.admin;
 
-    _editingUser = result.editingUser;
-    _allUsers = result.allUsers;
+      _editingUser = result.editingUser;
+      _allUsers = result.allUsers;
 
-    if (_editingUser != null) {
-      final u = _editingUser!;
-      _role = u.role;
-      _nameCtrl.text = u.name;
-      _usernameCtrl.text = u.username;
-      _phoneCtrl.text = u.phone;
-      _groupCtrl.text = u.group;
-      if (u.monthlyFee > 0) _monthlyFeeCtrl.text = u.monthlyFee.toStringAsFixed(2);
-      if (u.monthlySalary > 0) _monthlySalaryCtrl.text = u.monthlySalary.toStringAsFixed(2);
-      _fatherNameCtrl.text = u.fatherName;
-      _fatherPhoneCtrl.text = u.fatherPhone;
-      _motherNameCtrl.text = u.motherName;
-      _motherPhoneCtrl.text = u.motherPhone;
-      _guardianNameCtrl.text = u.guardianName;
-      _guardianPhoneCtrl.text = u.guardianPhone;
-      _guardianRelationCtrl.text = u.guardianRelation;
-      _presentAddressCtrl.text = u.presentAddress;
-      _permanentAddressCtrl.text = u.permanentAddress;
-      _nidNumberCtrl.text = u.nidNumber;
-      _attachments = List<String>.from(u.attachments);
+      if (_editingUser != null) {
+        final u = _editingUser!;
+        _role = u.role;
+        _nameCtrl.text = u.name;
+        _usernameCtrl.text = u.username;
+        _phoneCtrl.text = u.phone;
+        _groupCtrl.text = u.group;
+        if (u.monthlyFee > 0) {
+          _monthlyFeeCtrl.text = u.monthlyFee.toStringAsFixed(2);
+        }
+        if (u.monthlySalary > 0) {
+          _monthlySalaryCtrl.text = u.monthlySalary.toStringAsFixed(2);
+        }
+        _fatherNameCtrl.text = u.fatherName;
+        _fatherPhoneCtrl.text = u.fatherPhone;
+        _motherNameCtrl.text = u.motherName;
+        _motherPhoneCtrl.text = u.motherPhone;
+        _guardianNameCtrl.text = u.guardianName;
+        _guardianPhoneCtrl.text = u.guardianPhone;
+        _guardianRelationCtrl.text = u.guardianRelation;
+        _presentAddressCtrl.text = u.presentAddress;
+        _permanentAddressCtrl.text = u.permanentAddress;
+        _nidNumberCtrl.text = u.nidNumber;
+        _attachments = List<String>.from(u.attachments);
+        _joiningDate = u.createdAt;
+      } else {
+        _joiningDate = DateTime.now();
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnack('Failed to load user form data. Please try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
-
-    setState(() => _loading = false);
   }
 
   void _showSnack(String message) {
@@ -188,7 +206,7 @@ class _UserFormPageState extends State<UserFormPage> {
       return;
     }
 
-    if (!_formKey.currentState!.validate()) {
+    if (_formKey.currentState?.validate() != true) {
       return;
     }
 
@@ -209,7 +227,8 @@ class _UserFormPageState extends State<UserFormPage> {
       final password = _passwordCtrl.text.trim();
 
       final monthlyFee = double.tryParse(_monthlyFeeCtrl.text.trim()) ?? 0.0;
-      final monthlySalary = double.tryParse(_monthlySalaryCtrl.text.trim()) ?? 0.0;
+      final monthlySalary =
+          double.tryParse(_monthlySalaryCtrl.text.trim()) ?? 0.0;
 
       final user = AppUser(
         id: _editingUser?.id ?? _uuid.v4(),
@@ -221,7 +240,7 @@ class _UserFormPageState extends State<UserFormPage> {
         role: _role,
         phone: _phoneCtrl.text.trim(),
         group: _groupCtrl.text.trim(),
-        createdAt: _editingUser?.createdAt ?? now,
+        createdAt: _isAdmin ? _joiningDate : (_editingUser?.createdAt ?? now),
         monthlyFee: _isStudent ? monthlyFee : 0.0,
         monthlySalary: _isStudent ? 0.0 : monthlySalary,
         fatherName: _fatherNameCtrl.text.trim(),
@@ -245,6 +264,27 @@ class _UserFormPageState extends State<UserFormPage> {
       if (mounted) {
         setState(() => _saving = false);
       }
+    }
+  }
+
+  String _dateText(DateTime value) {
+    return '${value.day.toString().padLeft(2, '0')}/'
+        '${value.month.toString().padLeft(2, '0')}/'
+        '${value.year}';
+  }
+
+  Future<void> _pickJoiningDate() async {
+    if (!_isAdmin) {
+      return;
+    }
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _joiningDate,
+      firstDate: DateTime(1970),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && mounted) {
+      setState(() => _joiningDate = picked);
     }
   }
 
@@ -300,9 +340,7 @@ class _UserFormPageState extends State<UserFormPage> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
         color: Theme.of(context).colorScheme.surfaceContainerLow,
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,8 +362,9 @@ class _UserFormPageState extends State<UserFormPage> {
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w800),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     Text(
                       subtitle,
@@ -710,8 +749,8 @@ class _UserFormPageState extends State<UserFormPage> {
                     context: context,
                     title: _isStudent ? 'Monthly Fee' : 'Monthly Salary',
                     subtitle: _isStudent
-                        ? 'Set a fixed fee – a pending fee record will be auto-generated every month.'
-                        : 'Set a fixed salary – a pending salary record will be auto-generated every month.',
+                        ? 'Set a fixed fee – the first pending fee will be generated one month after the joining date, then monthly.'
+                        : 'Set a fixed salary – the first pending salary will be generated one month after the joining date, then monthly.',
                     icon: _isStudent
                         ? Icons.payments_outlined
                         : Icons.account_balance_wallet_outlined,
@@ -720,56 +759,145 @@ class _UserFormPageState extends State<UserFormPage> {
                       LayoutBuilder(
                         builder: (context, constraints) =>
                             _twoColWrap(context, constraints, [
-                          if (_isStudent)
-                            TextFormField(
-                              controller: _monthlyFeeCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Monthly Fee Amount (৳)',
-                                hintText: '0.00',
-                                prefixIcon: Icon(Icons.payments_outlined),
-                              ),
-                              validator: (v) {
-                                if ((v ?? '').trim().isEmpty) return null;
-                                final n = double.tryParse(v!.trim());
-                                if (n == null || n < 0) return 'Enter a valid positive amount';
-                                return null;
-                              },
-                            )
-                          else
-                            TextFormField(
-                              controller: _monthlySalaryCtrl,
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Monthly Salary Amount (৳)',
-                                hintText: '0.00',
-                                prefixIcon: Icon(Icons.account_balance_wallet_outlined),
-                              ),
-                              validator: (v) {
-                                if ((v ?? '').trim().isEmpty) return null;
-                                final n = double.tryParse(v!.trim());
-                                if (n == null || n < 0) return 'Enter a valid positive amount';
-                                return null;
-                              },
-                            ),
-                        ]),
+                              if (_isStudent)
+                                TextFormField(
+                                  controller: _monthlyFeeCtrl,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Monthly Fee Amount (৳)',
+                                    hintText: '0.00',
+                                    prefixIcon: Icon(Icons.payments_outlined),
+                                  ),
+                                  validator: (v) {
+                                    if ((v ?? '').trim().isEmpty) return null;
+                                    final n = double.tryParse(v!.trim());
+                                    if (n == null || n < 0)
+                                      return 'Enter a valid positive amount';
+                                    return null;
+                                  },
+                                )
+                              else
+                                TextFormField(
+                                  controller: _monthlySalaryCtrl,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Monthly Salary Amount (৳)',
+                                    hintText: '0.00',
+                                    prefixIcon: Icon(
+                                      Icons.account_balance_wallet_outlined,
+                                    ),
+                                  ),
+                                  validator: (v) {
+                                    if ((v ?? '').trim().isEmpty) return null;
+                                    final n = double.tryParse(v!.trim());
+                                    if (n == null || n < 0)
+                                      return 'Enter a valid positive amount';
+                                    return null;
+                                  },
+                                ),
+                            ]),
                       ),
                       const SizedBox(height: 10),
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF059669).withValues(alpha: 0.08),
+                          color: const Color(
+                            0xFF059669,
+                          ).withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFF059669).withValues(alpha: 0.18)),
+                          border: Border.all(
+                            color: const Color(
+                              0xFF059669,
+                            ).withValues(alpha: 0.18),
+                          ),
                         ),
-                        child: Row(children: [
-                          const Icon(Icons.auto_mode_outlined, color: Color(0xFF059669), size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(
-                            'A pending ${_isStudent ? 'fee' : 'salary'} record will be auto-generated on the 1st of every month for this amount.',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
-                          )),
-                        ]),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.auto_mode_outlined,
+                              color: Color(0xFF059669),
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'A pending ${_isStudent ? 'fee' : 'salary'} record will be auto-generated one month after the joining date and then every following month.',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  _sectionCard(
+                    context: context,
+                    title: 'Joining Date',
+                    subtitle: _isAdmin
+                        ? 'Admin can change the joining date of this user.'
+                        : 'Only admin can change joining date.',
+                    icon: Icons.event_outlined,
+                    color: const Color(0xFF2563EB),
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.surfaceContainerHighest,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.outlineVariant,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.calendar_today_outlined),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      _dateText(_joiningDate),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (_isAdmin) ...[
+                            const SizedBox(width: 10),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: 96,
+                                maxWidth: 180,
+                              ),
+                              child: FilledButton.tonalIcon(
+                                onPressed: _pickJoiningDate,
+                                icon: const Icon(Icons.edit_calendar_outlined),
+                                label: const Text('Change'),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ],
                   ),
@@ -779,18 +907,41 @@ class _UserFormPageState extends State<UserFormPage> {
                     _sectionCard(
                       context: context,
                       title: "Parent's Information",
-                      subtitle: "Father's and mother's name and contact details.",
+                      subtitle:
+                          "Father's and mother's name and contact details.",
                       icon: Icons.family_restroom_outlined,
                       color: _roleColor(_role),
                       children: [
                         LayoutBuilder(
                           builder: (context, constraints) =>
                               _twoColWrap(context, constraints, [
-                            TextFormField(controller: _fatherNameCtrl, decoration: const InputDecoration(labelText: "Father's Name")),
-                            TextFormField(controller: _fatherPhoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Father's Phone")),
-                            TextFormField(controller: _motherNameCtrl, decoration: const InputDecoration(labelText: "Mother's Name")),
-                            TextFormField(controller: _motherPhoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Mother's Phone")),
-                          ]),
+                                TextFormField(
+                                  controller: _fatherNameCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: "Father's Name",
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _fatherPhoneCtrl,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: const InputDecoration(
+                                    labelText: "Father's Phone",
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _motherNameCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: "Mother's Name",
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _motherPhoneCtrl,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: const InputDecoration(
+                                    labelText: "Mother's Phone",
+                                  ),
+                                ),
+                              ]),
                         ),
                       ],
                     ),
@@ -800,20 +951,35 @@ class _UserFormPageState extends State<UserFormPage> {
                     _sectionCard(
                       context: context,
                       title: "Guardian's Information",
-                      subtitle: "Legal guardian contact and relation to the student.",
+                      subtitle:
+                          "Legal guardian contact and relation to the student.",
                       icon: Icons.supervisor_account_outlined,
                       color: _roleColor(_role),
                       children: [
                         LayoutBuilder(
                           builder: (context, constraints) =>
                               _twoColWrap(context, constraints, [
-                            TextFormField(controller: _guardianNameCtrl, decoration: const InputDecoration(labelText: "Guardian's Name")),
-                            TextFormField(controller: _guardianPhoneCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "Guardian's Phone")),
-                            TextFormField(
-                              controller: _guardianRelationCtrl,
-                              decoration: const InputDecoration(labelText: 'Relation to Student', hintText: 'e.g. Uncle, Elder Brother…'),
-                            ),
-                          ]),
+                                TextFormField(
+                                  controller: _guardianNameCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: "Guardian's Name",
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _guardianPhoneCtrl,
+                                  keyboardType: TextInputType.phone,
+                                  decoration: const InputDecoration(
+                                    labelText: "Guardian's Phone",
+                                  ),
+                                ),
+                                TextFormField(
+                                  controller: _guardianRelationCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Relation to Student',
+                                    hintText: 'e.g. Uncle, Elder Brother…',
+                                  ),
+                                ),
+                              ]),
                         ),
                       ],
                     ),
@@ -830,15 +996,17 @@ class _UserFormPageState extends State<UserFormPage> {
                         LayoutBuilder(
                           builder: (context, constraints) =>
                               _twoColWrap(context, constraints, [
-                            TextFormField(
-                              controller: _nidNumberCtrl,
-                              keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: 'NID Card Number',
-                                prefixIcon: Icon(Icons.credit_card_outlined),
-                              ),
-                            ),
-                          ]),
+                                TextFormField(
+                                  controller: _nidNumberCtrl,
+                                  keyboardType: TextInputType.number,
+                                  decoration: const InputDecoration(
+                                    labelText: 'NID Card Number',
+                                    prefixIcon: Icon(
+                                      Icons.credit_card_outlined,
+                                    ),
+                                  ),
+                                ),
+                              ]),
                         ),
                       ],
                     ),
@@ -854,13 +1022,19 @@ class _UserFormPageState extends State<UserFormPage> {
                       TextFormField(
                         controller: _presentAddressCtrl,
                         maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'Present Address', alignLabelWithHint: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Present Address',
+                          alignLabelWithHint: true,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _permanentAddressCtrl,
                         maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'Permanent Address', alignLabelWithHint: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Permanent Address',
+                          alignLabelWithHint: true,
+                        ),
                       ),
                     ],
                   ),
@@ -875,30 +1049,40 @@ class _UserFormPageState extends State<UserFormPage> {
                     children: [
                       if (_attachments.isNotEmpty) ...[
                         Wrap(
-                          spacing: 8, runSpacing: 8,
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
                             for (int i = 0; i < _attachments.length; i++)
                               _AttachmentChip(
                                 path: _attachments[i],
-                                onRemove: () => setState(() => _attachments.removeAt(i)),
+                                onRemove: () =>
+                                    setState(() => _attachments.removeAt(i)),
                               ),
                           ],
                         ),
                         const SizedBox(height: 12),
                       ],
-                      Row(children: [
-                        Expanded(child: OutlinedButton.icon(
-                          onPressed: _pickPhotos,
-                          icon: const Icon(Icons.add_photo_alternate_outlined),
-                          label: const Text('Add Photos'),
-                        )),
-                        const SizedBox(width: 10),
-                        Expanded(child: OutlinedButton.icon(
-                          onPressed: _pickFiles,
-                          icon: const Icon(Icons.upload_file_outlined),
-                          label: const Text('Add Files'),
-                        )),
-                      ]),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _pickPhotos,
+                              icon: const Icon(
+                                Icons.add_photo_alternate_outlined,
+                              ),
+                              label: const Text('Add Photos'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _pickFiles,
+                              icon: const Icon(Icons.upload_file_outlined),
+                              label: const Text('Add Files'),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
 
@@ -909,48 +1093,84 @@ class _UserFormPageState extends State<UserFormPage> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
                       color: _roleColor(_role).withValues(alpha: 0.08),
-                      border: Border.all(color: _roleColor(_role).withValues(alpha: 0.16)),
+                      border: Border.all(
+                        color: _roleColor(_role).withValues(alpha: 0.16),
+                      ),
                     ),
-                    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Icon(Icons.tips_and_updates_outlined, color: _roleColor(_role)),
-                      const SizedBox(width: 10),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(
-                          widget.isEdit ? 'Editing mode active' : 'Setup guidance',
-                          style: TextStyle(color: _roleColor(_role), fontWeight: FontWeight.w800),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.tips_and_updates_outlined,
+                          color: _roleColor(_role),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          widget.isEdit
-                              ? 'Leave the password blank to keep existing credentials. Monthly records are auto-generated on save.'
-                              : 'Fill in as much detail as possible. Monthly fee / salary records will be created automatically.',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.45),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.isEdit
+                                    ? 'Editing mode active'
+                                    : 'Setup guidance',
+                                style: TextStyle(
+                                  color: _roleColor(_role),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                widget.isEdit
+                                    ? 'Leave the password blank to keep existing credentials. Monthly records follow the joining date cycle.'
+                                    : 'Fill in as much detail as possible. Monthly fee / salary records will start after one month from the joining date.',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(height: 1.45),
+                              ),
+                            ],
+                          ),
                         ),
-                      ])),
-                    ]),
+                      ],
+                    ),
                   ),
 
                   // ─── Actions ───────────────────────────────────────────────
                   const SizedBox(height: 18),
-                  Row(children: [
-                    Expanded(child: OutlinedButton(
-                      onPressed: _saving ? null : () => context.pop(false),
-                      child: const Text('Cancel'),
-                    )),
-                    const SizedBox(width: 12),
-                    Expanded(child: FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _roleColor(_role),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: _saving ? null : () => context.pop(false),
+                          child: const Text('Cancel'),
+                        ),
                       ),
-                      onPressed: _saving ? null : _save,
-                      icon: Icon(_saving
-                          ? Icons.hourglass_top_rounded
-                          : (widget.isEdit ? Icons.save_outlined : Icons.person_add_alt_1_outlined)),
-                      label: Text(_saving ? 'Saving...' : (widget.isEdit ? 'Update User' : 'Create User')),
-                    )),
-                  ]),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _roleColor(_role),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          onPressed: _saving ? null : _save,
+                          icon: Icon(
+                            _saving
+                                ? Icons.hourglass_top_rounded
+                                : (widget.isEdit
+                                      ? Icons.save_outlined
+                                      : Icons.person_add_alt_1_outlined),
+                          ),
+                          label: Text(
+                            _saving
+                                ? 'Saving...'
+                                : (widget.isEdit
+                                      ? 'Update User'
+                                      : 'Create User'),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -971,9 +1191,13 @@ class _AttachmentChip extends StatelessWidget {
 
   bool get _isImage {
     final ext = path.toLowerCase();
-    return ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') ||
-           ext.endsWith('.gif') || ext.endsWith('.webp') || ext.endsWith('.bmp') ||
-           ext.endsWith('.heic');
+    return ext.endsWith('.jpg') ||
+        ext.endsWith('.jpeg') ||
+        ext.endsWith('.png') ||
+        ext.endsWith('.gif') ||
+        ext.endsWith('.webp') ||
+        ext.endsWith('.bmp') ||
+        ext.endsWith('.heic');
   }
 
   String get _fileName {
@@ -983,18 +1207,33 @@ class _AttachmentChip extends StatelessWidget {
 
   Widget _thumbnail() {
     if (kIsWeb || !_isImage) {
-      return Icon(_isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
-          size: 18, color: const Color(0xFFEC4899));
+      return Icon(
+        _isImage ? Icons.image_outlined : Icons.insert_drive_file_outlined,
+        size: 18,
+        color: const Color(0xFFEC4899),
+      );
     }
     try {
       return ClipRRect(
         borderRadius: BorderRadius.circular(6),
-        child: Image.file(File(path), width: 36, height: 36, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) =>
-                const Icon(Icons.broken_image_outlined, size: 18, color: Color(0xFFEC4899))),
+        child: Image.file(
+          File(path),
+          width: 36,
+          height: 36,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Icon(
+            Icons.broken_image_outlined,
+            size: 18,
+            color: Color(0xFFEC4899),
+          ),
+        ),
       );
     } catch (_) {
-      return const Icon(Icons.broken_image_outlined, size: 18, color: Color(0xFFEC4899));
+      return const Icon(
+        Icons.broken_image_outlined,
+        size: 18,
+        color: Color(0xFFEC4899),
+      );
     }
   }
 
@@ -1006,18 +1245,37 @@ class _AttachmentChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFEC4899).withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEC4899).withValues(alpha: 0.22)),
+        border: Border.all(
+          color: const Color(0xFFEC4899).withValues(alpha: 0.22),
+        ),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        _thumbnail(),
-        const SizedBox(width: 6),
-        Flexible(child: Text(_fileName, overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500))),
-        const SizedBox(width: 4),
-        GestureDetector(
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _thumbnail(),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
+            child: Text(
+              _fileName,
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w500),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
             onTap: onRemove,
-            child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFFEC4899))),
-      ]),
+            child: const Icon(
+              Icons.close_rounded,
+              size: 16,
+              color: Color(0xFFEC4899),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

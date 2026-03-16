@@ -302,6 +302,8 @@ extension _FinanceSection on _HomeScreenState {
       required List<double> colWidths,
       required List<List<Widget>> rows,
       List<int> stretchColumns = const [],
+      List<Widget>? mobileCards,
+      double mobileBreakpoint = 860,
     }) {
       assert(headers.length == colWidths.length);
       const hPad = EdgeInsets.symmetric(horizontal: 14, vertical: 12);
@@ -323,6 +325,22 @@ extension _FinanceSection on _HomeScreenState {
         clipBehavior: Clip.antiAlias,
         child: LayoutBuilder(
           builder: (context, constraints) {
+            if (constraints.maxWidth < mobileBreakpoint &&
+                mobileCards != null) {
+              return Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    for (int i = 0; i < mobileCards.length; i++) ...[
+                      mobileCards[i],
+                      if (i != mobileCards.length - 1)
+                        const SizedBox(height: 12),
+                    ],
+                  ],
+                ),
+              );
+            }
+
             final baseTotal = colWidths.fold<double>(0, (s, w) => s + w);
             final targetWidth = constraints.maxWidth > baseTotal
                 ? constraints.maxWidth
@@ -569,6 +587,164 @@ extension _FinanceSection on _HomeScreenState {
       ),
     );
 
+    Widget recordMetaChip({
+      required String label,
+      required Color color,
+      IconData? icon,
+    }) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: color.withValues(alpha: 0.16)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: color),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget financeRecordCard({
+      required Color accentColor,
+      required IconData icon,
+      required String title,
+      String? subtitle,
+      String? note,
+      required String amount,
+      required Color amountColor,
+      required List<Widget> chips,
+      Widget? trailing,
+    }) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: accentColor.withValues(alpha: 0.18)),
+          boxShadow: [
+            BoxShadow(
+              color: accentColor.withValues(alpha: 0.08),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: accentColor.withValues(alpha: 0.12),
+                  ),
+                  child: Icon(icon, color: accentColor),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w900),
+                      ),
+                      if (subtitle != null && subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) trailing,
+              ],
+            ),
+            if (chips.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 8, children: chips),
+            ],
+            if (note != null && note.trim().isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: scheme.outlineVariant.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Text(
+                  note,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    height: 1.4,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: amountColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: amountColor.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  amount,
+                  style: TextStyle(
+                    color: amountColor,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     Widget feeSection() {
       return _glassCard(
         child: Column(
@@ -635,6 +811,89 @@ extension _FinanceSection on _HomeScreenState {
                     ? [40, 160, 110, 100, 150, 90, 110, 44]
                     : [40, 160, 110, 100, 150, 90, 110],
                 stretchColumns: const [1, 4],
+                mobileCards: [
+                  for (int i = 0; i < fees.length; i++)
+                    financeRecordCard(
+                      accentColor: const Color(0xFF0EA5E9),
+                      icon: Icons.school_rounded,
+                      title: userNameById(fees[i].studentId),
+                      subtitle: fees[i].studentId,
+                      note: fees[i].note,
+                      amount: fees[i].status.isPaid
+                          ? '+${_money(fees[i].amount)}'
+                          : _money(fees[i].amount),
+                      amountColor: fees[i].status.isPaid
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFFF59E0B),
+                      chips: [
+                        recordMetaChip(
+                          label: '#${i + 1}',
+                          color: const Color(0xFF0EA5E9),
+                          icon: Icons.tag_rounded,
+                        ),
+                        recordMetaChip(
+                          label: dateText(fees[i].createdAt),
+                          color: const Color(0xFF0EA5E9),
+                          icon: Icons.calendar_today_outlined,
+                        ),
+                        recordMetaChip(
+                          label: fees[i].month.isEmpty
+                              ? 'No month'
+                              : fees[i].month,
+                          color: const Color(0xFF0EA5E9),
+                          icon: Icons.event_note_outlined,
+                        ),
+                        statusChip(fees[i].status),
+                      ],
+                      trailing: canManage
+                          ? actionPopup([
+                              PopupMenuItem<int>(
+                                value: 0,
+                                onTap: () => _toggleFeeStatus(fees[i]),
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    fees[i].status.isPaid
+                                        ? Icons.undo_rounded
+                                        : Icons.check_circle_rounded,
+                                    size: 18,
+                                  ),
+                                  title: Text(
+                                    fees[i].status.isPaid
+                                        ? 'Mark Pending'
+                                        : 'Mark Paid',
+                                  ),
+                                ),
+                              ),
+                              PopupMenuItem<int>(
+                                value: 1,
+                                onTap: () => _openEditFeeRoute(fees[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.edit_outlined, size: 18),
+                                  title: Text('Edit'),
+                                ),
+                              ),
+                              PopupMenuItem<int>(
+                                value: 2,
+                                onTap: () => _deleteFee(fees[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                  title: Text(
+                                    'Delete',
+                                    style: TextStyle(color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                              ),
+                            ])
+                          : null,
+                    ),
+                ],
                 rows: [
                   for (int i = 0; i < fees.length; i++)
                     [
@@ -767,6 +1026,59 @@ extension _FinanceSection on _HomeScreenState {
                     ? [40, 260, 120, 130, 44]
                     : [40, 260, 120, 130],
                 stretchColumns: const [1],
+                mobileCards: [
+                  for (int i = 0; i < expenses.length; i++)
+                    financeRecordCard(
+                      accentColor: const Color(0xFFDC2626),
+                      icon: Icons.receipt_long_rounded,
+                      title: expenses[i].title,
+                      subtitle: 'Expense entry',
+                      amount: '-${_money(expenses[i].amount)}',
+                      amountColor: const Color(0xFFDC2626),
+                      chips: [
+                        recordMetaChip(
+                          label: '#${i + 1}',
+                          color: const Color(0xFFDC2626),
+                          icon: Icons.tag_rounded,
+                        ),
+                        recordMetaChip(
+                          label: dateText(expenses[i].createdAt),
+                          color: const Color(0xFFDC2626),
+                          icon: Icons.calendar_today_outlined,
+                        ),
+                      ],
+                      trailing: canManage
+                          ? actionPopup([
+                              PopupMenuItem<int>(
+                                value: 0,
+                                onTap: () =>
+                                    _openEditExpenseRoute(expenses[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.edit_outlined, size: 18),
+                                  title: Text('Edit'),
+                                ),
+                              ),
+                              PopupMenuItem<int>(
+                                value: 1,
+                                onTap: () => _deleteExpense(expenses[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                  title: Text(
+                                    'Delete',
+                                    style: TextStyle(color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                              ),
+                            ])
+                          : null,
+                    ),
+                ],
                 rows: [
                   for (int i = 0; i < expenses.length; i++)
                     [
@@ -879,6 +1191,87 @@ extension _FinanceSection on _HomeScreenState {
                     ? [40, 160, 110, 100, 90, 110, 44]
                     : [40, 160, 110, 100, 90, 110],
                 stretchColumns: const [1, 3],
+                mobileCards: [
+                  for (int i = 0; i < salaries.length; i++)
+                    financeRecordCard(
+                      accentColor: const Color(0xFF7C3AED),
+                      icon: Icons.badge_rounded,
+                      title: userNameById(salaries[i].teacherId),
+                      subtitle: salaries[i].teacherId,
+                      amount: salaries[i].status.isPaid
+                          ? '-${_money(salaries[i].amount)}'
+                          : _money(salaries[i].amount),
+                      amountColor: salaries[i].status.isPaid
+                          ? const Color(0xFFDC2626)
+                          : const Color(0xFFF59E0B),
+                      chips: [
+                        recordMetaChip(
+                          label: '#${i + 1}',
+                          color: const Color(0xFF7C3AED),
+                          icon: Icons.tag_rounded,
+                        ),
+                        recordMetaChip(
+                          label: dateText(salaries[i].createdAt),
+                          color: const Color(0xFF7C3AED),
+                          icon: Icons.calendar_today_outlined,
+                        ),
+                        recordMetaChip(
+                          label: salaries[i].month,
+                          color: const Color(0xFF7C3AED),
+                          icon: Icons.event_note_outlined,
+                        ),
+                        statusChip(salaries[i].status),
+                      ],
+                      trailing: canManage
+                          ? actionPopup([
+                              PopupMenuItem<int>(
+                                value: 0,
+                                onTap: () => _toggleSalaryStatus(salaries[i]),
+                                child: ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    salaries[i].status.isPaid
+                                        ? Icons.undo_rounded
+                                        : Icons.check_circle_rounded,
+                                    size: 18,
+                                  ),
+                                  title: Text(
+                                    salaries[i].status.isPaid
+                                        ? 'Mark Pending'
+                                        : 'Mark Paid',
+                                  ),
+                                ),
+                              ),
+                              PopupMenuItem<int>(
+                                value: 1,
+                                onTap: () =>
+                                    _openEditSalaryRoute(salaries[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.edit_outlined, size: 18),
+                                  title: Text('Edit'),
+                                ),
+                              ),
+                              PopupMenuItem<int>(
+                                value: 2,
+                                onTap: () => _deleteSalary(salaries[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                  title: Text(
+                                    'Delete',
+                                    style: TextStyle(color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                              ),
+                            ])
+                          : null,
+                    ),
+                ],
                 rows: [
                   for (int i = 0; i < salaries.length; i++)
                     [
@@ -1009,6 +1402,58 @@ extension _FinanceSection on _HomeScreenState {
                     ? [40, 260, 120, 130, 44]
                     : [40, 260, 120, 130],
                 stretchColumns: const [1],
+                mobileCards: [
+                  for (int i = 0; i < funds.length; i++)
+                    financeRecordCard(
+                      accentColor: const Color(0xFF16A34A),
+                      icon: Icons.volunteer_activism_rounded,
+                      title: funds[i].title,
+                      subtitle: 'Fund contribution',
+                      amount: '+${_money(funds[i].amount)}',
+                      amountColor: const Color(0xFF16A34A),
+                      chips: [
+                        recordMetaChip(
+                          label: '#${i + 1}',
+                          color: const Color(0xFF16A34A),
+                          icon: Icons.tag_rounded,
+                        ),
+                        recordMetaChip(
+                          label: dateText(funds[i].createdAt),
+                          color: const Color(0xFF16A34A),
+                          icon: Icons.calendar_today_outlined,
+                        ),
+                      ],
+                      trailing: canManage
+                          ? actionPopup([
+                              PopupMenuItem<int>(
+                                value: 0,
+                                onTap: () => _openEditFundRoute(funds[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(Icons.edit_outlined, size: 18),
+                                  title: Text('Edit'),
+                                ),
+                              ),
+                              PopupMenuItem<int>(
+                                value: 1,
+                                onTap: () => _deleteFund(funds[i].id),
+                                child: const ListTile(
+                                  dense: true,
+                                  leading: Icon(
+                                    Icons.delete_outline_rounded,
+                                    size: 18,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                  title: Text(
+                                    'Delete',
+                                    style: TextStyle(color: Color(0xFFDC2626)),
+                                  ),
+                                ),
+                              ),
+                            ])
+                          : null,
+                    ),
+                ],
                 rows: [
                   for (int i = 0; i < funds.length; i++)
                     [
