@@ -100,7 +100,7 @@ class AppUser {
   final String nidNumber;
 
   // Finance auto-generation
-  final double monthlyFee;    // student: auto-generate fee each month
+  final double monthlyFee; // student: auto-generate fee each month
   final double monthlySalary; // staff: auto-generate salary each month
 
   // Attachments
@@ -494,6 +494,128 @@ class AppData {
     }
     throw const FormatException('Unsupported backup format');
   }
+
+  static List<T> _deduplicateById<T>(
+    Iterable<T> records,
+    String Function(T record) idOf,
+    DateTime Function(T record) timestampOf,
+  ) {
+    final latestById = <String, T>{};
+    final latestTimestampById = <String, DateTime>{};
+
+    for (final record in records) {
+      final id = idOf(record).trim();
+      if (id.isEmpty) {
+        continue;
+      }
+
+      final timestamp = timestampOf(record);
+      final previousTimestamp = latestTimestampById[id];
+      if (previousTimestamp == null || timestamp.isAfter(previousTimestamp)) {
+        latestById[id] = record;
+        latestTimestampById[id] = timestamp;
+      }
+    }
+
+    final values = latestById.values.toList();
+    values.sort((left, right) {
+      final timeCompare = timestampOf(right).compareTo(timestampOf(left));
+      if (timeCompare != 0) {
+        return timeCompare;
+      }
+      return idOf(left).compareTo(idOf(right));
+    });
+    return values;
+  }
+
+  AppData normalizedForImport() {
+    final normalizedUsers = _deduplicateById(
+      users,
+      (record) => record.id,
+      (record) => record.createdAt,
+    );
+
+    return AppData(
+      users: normalizedUsers,
+      fees: _deduplicateById(
+        fees,
+        (record) => record.id,
+        (record) => record.createdAt,
+      ),
+      attendance: _deduplicateById(
+        attendance,
+        (record) => record.id,
+        (record) => record.date,
+      ),
+      expenses: _deduplicateById(
+        expenses,
+        (record) => record.id,
+        (record) => record.createdAt,
+      ),
+      salaries: _deduplicateById(
+        salaries,
+        (record) => record.id,
+        (record) => record.createdAt,
+      ),
+      funds: _deduplicateById(
+        funds,
+        (record) => record.id,
+        (record) => record.createdAt,
+      ),
+      results: _deduplicateById(
+        results,
+        (record) => record.id,
+        (record) => record.publishedAt,
+      ),
+    );
+  }
+
+  void validateRelationalIntegrity() {
+    final userIds = users.map((user) => user.id).toSet();
+
+    final orphanFees = fees
+        .where((record) => !userIds.contains(record.studentId))
+        .length;
+    final orphanAttendance = attendance
+        .where((record) => !userIds.contains(record.userId))
+        .length;
+    final orphanSalaries = salaries
+        .where((record) => !userIds.contains(record.teacherId))
+        .length;
+    final orphanResults = results
+        .where((record) => !userIds.contains(record.studentId))
+        .length;
+
+    if (orphanFees == 0 &&
+        orphanAttendance == 0 &&
+        orphanSalaries == 0 &&
+        orphanResults == 0) {
+      return;
+    }
+
+    throw FormatException(
+      'Backup references missing users (fees: $orphanFees, attendance: $orphanAttendance, salaries: $orphanSalaries, results: $orphanResults).',
+    );
+  }
+
+  int get totalRecords =>
+      users.length +
+      fees.length +
+      attendance.length +
+      expenses.length +
+      salaries.length +
+      funds.length +
+      results.length;
+
+  Map<String, int> get recordCounts => {
+    'users': users.length,
+    'fees': fees.length,
+    'attendance': attendance.length,
+    'expenses': expenses.length,
+    'salaries': salaries.length,
+    'funds': funds.length,
+    'results': results.length,
+  };
 
   Map<String, dynamic> toJson() => {
     'users': users.map((e) => e.toJson()).toList(),

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cryptography/cryptography.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/shared/domain/app_models.dart';
@@ -45,6 +46,78 @@ class JsonRepository implements AppRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_storageKey, jsonEncode(data.toJson()));
     _cache = data;
+  }
+
+  static Object? _canonicalizeJson(Object? value) {
+    if (value is Map) {
+      final map = Map<String, dynamic>.from(
+        value.map((key, v) => MapEntry(key.toString(), v)),
+      );
+      final sortedKeys = map.keys.toList()..sort();
+      return {for (final key in sortedKeys) key: _canonicalizeJson(map[key])};
+    }
+    if (value is List) {
+      return value.map(_canonicalizeJson).toList(growable: false);
+    }
+    return value;
+  }
+
+  static String _hex(List<int> bytes) {
+    final buffer = StringBuffer();
+    for (final byte in bytes) {
+      buffer.write(byte.toRadixString(16).padLeft(2, '0'));
+    }
+    return buffer.toString();
+  }
+
+  Future<String> _checksumSha256(Map<String, dynamic> data) async {
+    final canonical = _canonicalizeJson(data);
+    final encoded = utf8.encode(jsonEncode(canonical));
+    final hash = await Sha256().hash(encoded);
+    return _hex(hash.bytes);
+  }
+
+  Future<void> _validateIntegrityIfPresent(
+    Map<String, dynamic> backup,
+    AppData data,
+  ) async {
+    final rawIntegrity = backup['integrity'];
+    if (rawIntegrity is! Map) {
+      return;
+    }
+
+    final integrity = Map<String, dynamic>.from(rawIntegrity);
+
+    final expectedTotal = integrity['totalRecords'];
+    if (expectedTotal is int && expectedTotal != data.totalRecords) {
+      throw const FormatException(
+        'Backup integrity check failed: total record count mismatch.',
+      );
+    }
+
+    final expectedCountsRaw = integrity['counts'];
+    if (expectedCountsRaw is Map) {
+      final expectedCounts = Map<String, dynamic>.from(expectedCountsRaw);
+      for (final entry in data.recordCounts.entries) {
+        final expectedCount = expectedCounts[entry.key];
+        if (expectedCount is int && expectedCount != entry.value) {
+          throw FormatException(
+            'Backup integrity check failed: ${entry.key} count mismatch.',
+          );
+        }
+      }
+    }
+
+    final expectedChecksum =
+        (integrity['checksumSha256'] ?? integrity['checksum'])?.toString();
+    if (expectedChecksum != null && expectedChecksum.trim().isNotEmpty) {
+      final actualChecksum = await _checksumSha256(data.toJson());
+      if (actualChecksum != expectedChecksum.toLowerCase()) {
+        throw const FormatException(
+          'Backup integrity check failed: checksum mismatch.',
+        );
+      }
+    }
   }
 
   // ─── Bulk ─────────────────────────────────────────────────────────────────
@@ -187,18 +260,28 @@ class JsonRepository implements AppRepository {
 
   @override
   Future<Map<String, dynamic>> exportJson() async {
-    final data = await _load();
+    final data = (await _load()).normalizedForImport();
+    final dataJson = data.toJson();
+    final checksum = await _checksumSha256(dataJson);
     return {
       'app': 'madrasah_manager',
-      'version': 3,
+      'version': 4,
       'exportedAt': DateTime.now().toIso8601String(),
-      'data': data.toJson(),
+      'data': dataJson,
+      'integrity': {
+        'algorithm': 'SHA-256',
+        'checksumSha256': checksum,
+        'totalRecords': data.totalRecords,
+        'counts': data.recordCounts,
+      },
     };
   }
 
   @override
   Future<void> importJson(Map<String, dynamic> json) async {
-    final data = AppData.fromBackup(json);
+    final data = AppData.fromBackup(json).normalizedForImport();
+    data.validateRelationalIntegrity();
+    await _validateIntegrityIfPresent(json, data);
     await _persist(data);
   }
 }

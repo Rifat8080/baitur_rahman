@@ -882,7 +882,7 @@ class _HomeScreenState extends State<HomeScreen> {
         importPayload = parsed;
       }
 
-      final preview = AppData.fromBackup(importPayload);
+      final preview = AppData.fromBackup(importPayload).normalizedForImport();
       final confirmed = await _confirmAction(
         title: 'Replace current data?',
         message:
@@ -941,6 +941,20 @@ class _HomeScreenState extends State<HomeScreen> {
       nonce: nonce,
     );
 
+    final integrity = payload['integrity'];
+    final integrityMap = integrity is Map
+        ? Map<String, dynamic>.from(integrity)
+        : <String, dynamic>{};
+    final countMapRaw = integrityMap['counts'];
+    final countMap = countMapRaw is Map
+        ? Map<String, dynamic>.from(countMapRaw)
+        : <String, dynamic>{};
+
+    int readCount(String key, int fallback) {
+      final value = countMap[key];
+      return value is int ? value : fallback;
+    }
+
     return {
       'type': 'madrasah-secure-backup',
       'version': 1,
@@ -957,13 +971,15 @@ class _HomeScreenState extends State<HomeScreen> {
       'metadata': {
         'exportedAt': DateTime.now().toIso8601String(),
         'app': 'Madrasah Manager',
-        'users': _data.users.length,
-        'fees': _data.fees.length,
-        'attendance': _data.attendance.length,
-        'expenses': _data.expenses.length,
-        'salaries': _data.salaries.length,
-        'funds': _data.funds.length,
-        'results': _data.results.length,
+        'users': readCount('users', _data.users.length),
+        'fees': readCount('fees', _data.fees.length),
+        'attendance': readCount('attendance', _data.attendance.length),
+        'expenses': readCount('expenses', _data.expenses.length),
+        'salaries': readCount('salaries', _data.salaries.length),
+        'funds': readCount('funds', _data.funds.length),
+        'results': readCount('results', _data.results.length),
+        'totalRecords': integrityMap['totalRecords'],
+        'checksumSha256': integrityMap['checksumSha256'],
       },
     };
   }
